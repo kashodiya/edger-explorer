@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EDGAR Explorer</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.css" rel="stylesheet">
     
     <!-- Prism.js for syntax highlighting -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet">
     
     <!-- JSON Viewer -->
     <link href="https://unpkg.com/@alenaksu/json-viewer@2.0.1/dist/json-viewer.bundle.css" rel="stylesheet">
@@ -51,75 +51,231 @@
             margin: 0 2px;
         }
         
-        /* File viewer styles */
+        /* Clean and natural file viewer styles */
         .file-viewer {
-            background: #f8f9fa;
+            background: #ffffff;
             border-radius: 8px;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e1e5e9;
         }
         
         .file-viewer-header {
-            background: #e9ecef;
-            padding: 12px 16px;
-            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e1e5e9;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
         .file-viewer-content {
-            max-height: 60vh;
+            max-height: 70vh;
             overflow: auto;
-            padding: 16px;
+            background: #ffffff;
         }
         
         .code-viewer {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.6;
         }
         
+        /* JSON Viewer - Clean and readable */
         .json-viewer {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 16px;
+            border: 1px solid #e9ecef;
         }
         
+        json-viewer {
+            --background-color: transparent !important;
+            --color: #495057 !important;
+            --string-color: #198754 !important;
+            --number-color: #0d6efd !important;
+            --boolean-color: #6f42c1 !important;
+            --null-color: #6c757d !important;
+            --property-color: #d63384 !important;
+            --bracket-color: #495057 !important;
+        }
+        
+        /* XML Viewer - Natural syntax highlighting */
         .xml-viewer {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 16px;
+            border: 1px solid #e9ecef;
         }
         
-        /* Override Prism theme for better visibility */
-        .prism-editor-wrapper {
-            background: #2d3748 !important;
-            border-radius: 8px;
-        }
-        
+        /* Clean Prism theme */
         pre[class*="language-"] {
-            margin: 0;
-            padding: 16px;
-            background: #2d3748 !important;
-            border-radius: 8px;
+            margin: 16px;
+            padding: 20px;
+            background: #f8f9fa !important;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+            color: #495057;
         }
         
-        /* Table viewer for CSV */
+        /* Natural syntax highlighting colors */
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #6c757d !important;
+            font-style: italic;
+        }
+        
+        .token.punctuation {
+            color: #495057 !important;
+        }
+        
+        .token.property,
+        .token.tag,
+        .token.boolean,
+        .token.number,
+        .token.constant,
+        .token.symbol,
+        .token.deleted {
+            color: #0d6efd !important;
+        }
+        
+        .token.selector,
+        .token.attr-name,
+        .token.string,
+        .token.char,
+        .token.builtin,
+        .token.inserted {
+            color: #198754 !important;
+        }
+        
+        .token.operator,
+        .token.entity,
+        .token.url,
+        .language-css .token.string,
+        .style .token.string {
+            color: #495057 !important;
+        }
+        
+        .token.atrule,
+        .token.attr-value,
+        .token.keyword {
+            color: #6f42c1 !important;
+            font-weight: 500;
+        }
+        
+        .token.function,
+        .token.class-name {
+            color: #fd7e14 !important;
+        }
+        
+        .token.regex,
+        .token.important,
+        .token.variable {
+            color: #dc3545 !important;
+        }
+        
+        /* Clean CSV Table */
+        .csv-table-container {
+            margin: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #e1e5e9;
+        }
+        
         .csv-table {
             width: 100%;
             border-collapse: collapse;
-        }
-        
-        .csv-table th,
-        .csv-table td {
-            border: 1px solid #dee2e6;
-            padding: 8px 12px;
-            text-align: left;
+            background: white;
         }
         
         .csv-table th {
-            background: #f8f9fa;
+            background: #495057;
+            color: white;
+            padding: 12px 16px;
             font-weight: 600;
+            text-align: left;
+            border: none;
+        }
+        
+        .csv-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #e9ecef;
+            color: #495057;
         }
         
         .csv-table tr:nth-child(even) {
             background: #f8f9fa;
+        }
+        
+        .csv-table tr:hover {
+            background: #e9ecef;
+            transition: background-color 0.2s ease;
+        }
+        
+        /* Text file viewer */
+        .text-viewer {
+            background: #f8f9fa;
+            color: #495057;
+            padding: 20px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 16px;
+            border: 1px solid #e9ecef;
+        }
+        
+        /* Simple file type chips */
+        .file-type-chip {
+            background-color: #6c757d !important;
+            color: white !important;
+            font-weight: 500;
+        }
+        
+        .file-type-chip.json {
+            background-color: #0d6efd !important;
+        }
+        
+        .file-type-chip.xml {
+            background-color: #6f42c1 !important;
+        }
+        
+        .file-type-chip.csv {
+            background-color: #198754 !important;
+        }
+        
+        .file-type-chip.pdf {
+            background-color: #dc3545 !important;
+        }
+        
+        .file-type-chip.html {
+            background-color: #fd7e14 !important;
+        }
+        
+        /* Clean scrollbar */
+        .file-viewer-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .file-viewer-content::-webkit-scrollbar-track {
+            background: #f1f3f4;
+            border-radius: 4px;
+        }
+        
+        .file-viewer-content::-webkit-scrollbar-thumb {
+            background: #c1c8cd;
+            border-radius: 4px;
+        }
+        
+        .file-viewer-content::-webkit-scrollbar-thumb:hover {
+            background: #a8b2ba;
         }
     </style>
 </head>
@@ -533,7 +689,11 @@
                         <div>
                             <v-icon class="mr-2">{{ getFileIcon(viewingAttachment?.filename) }}</v-icon>
                             {{ viewingAttachment?.filename }}
-                            <v-chip class="ml-2" size="small" color="primary">
+                            <v-chip 
+                                class="ml-2 file-type-chip" 
+                                :class="getFileType(viewingAttachment?.filename).toLowerCase()"
+                                size="small"
+                            >
                                 {{ getFileType(viewingAttachment?.filename) }}
                             </v-chip>
                         </div>
@@ -563,34 +723,57 @@
                         <!-- Enhanced viewers for different file types -->
                         <div v-else-if="viewingAttachment && viewMode === 'enhanced'">
                             <!-- JSON Viewer -->
-                            <div v-if="isJsonFile(viewingAttachment.filename)" class="pa-4">
-                                <json-viewer 
-                                    :data="parsedJsonContent" 
-                                    :expanded="2"
-                                    class="json-viewer"
-                                ></json-viewer>
+                            <div v-if="isJsonFile(viewingAttachment.filename)">
+                                <div class="json-viewer">
+                                    <json-viewer 
+                                        :data="parsedJsonContent" 
+                                        :expanded="3"
+                                    ></json-viewer>
+                                </div>
                             </div>
                             
                             <!-- XML Viewer with syntax highlighting -->
-                            <div v-else-if="isXmlFile(viewingAttachment.filename)" class="pa-4">
-                                <pre class="code-viewer"><code class="language-xml" v-html="highlightedContent"></code></pre>
+                            <div v-else-if="isXmlFile(viewingAttachment.filename)">
+                                <div class="xml-viewer">
+                                    <pre class="code-viewer"><code class="language-xml" v-html="highlightedContent"></code></pre>
+                                </div>
                             </div>
                             
                             <!-- CSV Table Viewer -->
-                            <div v-else-if="isCsvFile(viewingAttachment.filename)" class="pa-4">
-                                <v-data-table
-                                    :headers="csvHeaders"
-                                    :items="csvData"
-                                    :items-per-page="50"
-                                    class="csv-table"
-                                    density="compact"
-                                >
-                                </v-data-table>
+                            <div v-else-if="isCsvFile(viewingAttachment.filename)">
+                                <div class="csv-table-container">
+                                    <table class="csv-table">
+                                        <thead>
+                                            <tr>
+                                                <th v-for="header in csvHeaders" :key="header.key">
+                                                    {{ header.title }}
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, index) in csvData.slice(0, 100)" :key="index">
+                                                <td v-for="header in csvHeaders" :key="header.key">
+                                                    {{ row[header.key] }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div v-if="csvData.length > 100" class="pa-4 text-center">
+                                        <v-chip color="info" size="small">
+                                            Showing first 100 rows of {{ csvData.length }} total
+                                        </v-chip>
+                                    </div>
+                                </div>
                             </div>
                             
                             <!-- Code/Text with syntax highlighting -->
-                            <div v-else-if="isTextFile(viewingAttachment.filename)" class="pa-4">
-                                <pre class="code-viewer"><code :class="getLanguageClass(viewingAttachment.filename)" v-html="highlightedContent"></code></pre>
+                            <div v-else-if="isTextFile(viewingAttachment.filename)">
+                                <div v-if="highlightedContent" class="code-viewer">
+                                    <pre><code :class="getLanguageClass(viewingAttachment.filename)" v-html="highlightedContent"></code></pre>
+                                </div>
+                                <div v-else class="text-viewer">
+                                    {{ fileContent }}
+                                </div>
                             </div>
                             
                             <!-- HTML/PDF iframe fallback -->
