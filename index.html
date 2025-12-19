@@ -7,6 +7,13 @@
     <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.css" rel="stylesheet">
+    
+    <!-- Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet">
+    
+    <!-- JSON Viewer -->
+    <link href="https://unpkg.com/@alenaksu/json-viewer@2.0.1/dist/json-viewer.bundle.css" rel="stylesheet">
     <style>
         .loading-overlay {
             position: fixed;
@@ -42,6 +49,77 @@
         }
         .v-btn-group .v-btn {
             margin: 0 2px;
+        }
+        
+        /* File viewer styles */
+        .file-viewer {
+            background: #f8f9fa;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .file-viewer-header {
+            background: #e9ecef;
+            padding: 12px 16px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-viewer-content {
+            max-height: 60vh;
+            overflow: auto;
+            padding: 16px;
+        }
+        
+        .code-viewer {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .json-viewer {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        .xml-viewer {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        /* Override Prism theme for better visibility */
+        .prism-editor-wrapper {
+            background: #2d3748 !important;
+            border-radius: 8px;
+        }
+        
+        pre[class*="language-"] {
+            margin: 0;
+            padding: 16px;
+            background: #2d3748 !important;
+            border-radius: 8px;
+        }
+        
+        /* Table viewer for CSV */
+        .csv-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .csv-table th,
+        .csv-table td {
+            border: 1px solid #dee2e6;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .csv-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .csv-table tr:nth-child(even) {
+            background: #f8f9fa;
         }
     </style>
 </head>
@@ -96,11 +174,523 @@
         </v-app>
     </div>
 
+    <!-- Component Templates -->
+    <template id="home-template">
+        <div>
+            <v-row>
+                <v-col cols="12">
+                    <v-card class="mb-6">
+                        <v-card-title class="text-h4 text-center py-6">
+                            <v-icon size="48" class="mr-4">mdi-chart-line</v-icon>
+                            Welcome to EDGAR Explorer
+                        </v-card-title>
+                        <v-card-text class="text-center">
+                            <p class="text-h6 mb-4">Explore SEC EDGAR filing data with ease</p>
+                            <p class="text-body-1">Search for companies, view their filings, and analyze financial statements</p>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Search section -->
+            <v-row>
+                <v-col cols="12" md="8" offset-md="2">
+                    <v-card>
+                        <v-card-title>
+                            <v-icon class="mr-2">mdi-magnify</v-icon>
+                            Search Companies
+                        </v-card-title>
+                        <v-card-text>
+                            <v-text-field
+                                v-model="searchQuery"
+                                label="Enter company ticker or name"
+                                placeholder="e.g., AAPL, Apple Inc"
+                                prepend-inner-icon="mdi-magnify"
+                                @keyup.enter="searchCompanies"
+                                :loading="searching"
+                            ></v-text-field>
+                            <v-btn
+                                color="primary"
+                                @click="searchCompanies"
+                                :loading="searching"
+                                block
+                                class="mt-2"
+                            >
+                                Search
+                            </v-btn>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Search results -->
+            <v-row v-if="searchResults.length > 0" class="mt-4">
+                <v-col cols="12">
+                    <v-card>
+                        <v-card-title>Search Results</v-card-title>
+                        <v-card-text>
+                            <v-row>
+                                <v-col
+                                    v-for="company in searchResults"
+                                    :key="company.ticker"
+                                    cols="12"
+                                    md="6"
+                                    lg="4"
+                                >
+                                    <v-card
+                                        class="company-card"
+                                        @click="$router.push('/company/' + company.ticker)"
+                                    >
+                                        <v-card-title>{{ company.ticker }}</v-card-title>
+                                        <v-card-subtitle>{{ company.name }}</v-card-subtitle>
+                                        <v-card-text>
+                                            <p><strong>CIK:</strong> {{ company.cik }}</p>
+                                            <p v-if="company.industry"><strong>Industry:</strong> {{ company.industry }}</p>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Quick actions -->
+            <v-row class="mt-6">
+                <v-col cols="12" md="6">
+                    <v-card class="company-card" @click="$router.push('/recent-filings')">
+                        <v-card-title>
+                            <v-icon class="mr-2">mdi-clock-outline</v-icon>
+                            Recent Filings
+                        </v-card-title>
+                        <v-card-text>
+                            View the latest SEC filings across all companies
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+                <v-col cols="12" md="6">
+                    <v-card class="company-card" @click="showPopularCompanies">
+                        <v-card-title>
+                            <v-icon class="mr-2">mdi-star</v-icon>
+                            Popular Companies
+                        </v-card-title>
+                        <v-card-text>
+                            Quick access to major public companies
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Popular companies -->
+            <v-row v-if="showPopular" class="mt-4">
+                <v-col cols="12">
+                    <v-card>
+                        <v-card-title>Popular Companies</v-card-title>
+                        <v-card-text>
+                            <v-row>
+                                <v-col
+                                    v-for="ticker in popularTickers"
+                                    :key="ticker"
+                                    cols="6"
+                                    sm="4"
+                                    md="3"
+                                    lg="2"
+                                >
+                                    <v-btn
+                                        variant="outlined"
+                                        @click="$router.push('/company/' + ticker)"
+                                        block
+                                    >
+                                        {{ ticker }}
+                                    </v-btn>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+        </div>
+    </template>
+
+    <template id="company-template">
+        <div v-if="company">
+            <!-- Company header -->
+            <v-row>
+                <v-col cols="12">
+                    <v-card class="mb-4">
+                        <v-card-title class="text-h4">
+                            {{ company.ticker }}
+                            <v-chip class="ml-4" color="primary">{{ company.cik }}</v-chip>
+                        </v-card-title>
+                        <v-card-subtitle class="text-h6">{{ company.name }}</v-card-subtitle>
+                        <v-card-text v-if="company.industry">
+                            <p><strong>Industry:</strong> {{ company.industry }}</p>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Tabs for different views -->
+            <v-row>
+                <v-col cols="12">
+                    <v-card>
+                        <v-tabs v-model="activeTab" bg-color="primary">
+                            <v-tab value="filings">Filings</v-tab>
+                            <v-tab value="financials">Financials</v-tab>
+                        </v-tabs>
+
+                        <v-card-text>
+                            <v-window v-model="activeTab">
+                                <!-- Filings tab -->
+                                <v-window-item value="filings">
+                                    <div class="mb-4">
+                                        <v-row>
+                                            <v-col cols="12" md="6">
+                                                <v-select
+                                                    v-model="selectedForm"
+                                                    :items="formTypes"
+                                                    label="Filter by form type"
+                                                    clearable
+                                                    @update:model-value="loadFilings"
+                                                ></v-select>
+                                            </v-col>
+                                            <v-col cols="12" md="6">
+                                                <v-btn @click="loadFilings" :loading="loadingFilings">
+                                                    Refresh
+                                                </v-btn>
+                                            </v-col>
+                                        </v-row>
+                                    </div>
+
+                                    <v-data-table
+                                        :headers="filingHeaders"
+                                        :items="filings"
+                                        :loading="loadingFilings"
+                                        @click:row="viewFiling"
+                                        hover
+                                    >
+                                        <template v-slot:item.filing_date="{ item }">
+                                            {{ formatDate(item.filing_date) }}
+                                        </template>
+                                        <template v-slot:item.size="{ item }">
+                                            {{ formatSize(item.size) }}
+                                        </template>
+                                    </v-data-table>
+                                </v-window-item>
+
+                                <!-- Financials tab -->
+                                <v-window-item value="financials">
+                                    <div v-if="loadingFinancials" class="text-center py-8">
+                                        <v-progress-circular indeterminate></v-progress-circular>
+                                        <p class="mt-4">Loading financial statements...</p>
+                                    </div>
+
+                                    <div v-else>
+                                        <v-expansion-panels v-if="financials">
+                                            <v-expansion-panel
+                                                v-if="financials.balance_sheet && financials.balance_sheet.length > 0"
+                                                title="Balance Sheet"
+                                            >
+                                                <v-expansion-panel-text>
+                                                    <div class="financial-table">
+                                                        <v-data-table
+                                                            :headers="getFinancialHeaders(financials.balance_sheet)"
+                                                            :items="financials.balance_sheet"
+                                                            density="compact"
+                                                        ></v-data-table>
+                                                    </div>
+                                                </v-expansion-panel-text>
+                                            </v-expansion-panel>
+
+                                            <v-expansion-panel
+                                                v-if="financials.income_statement && financials.income_statement.length > 0"
+                                                title="Income Statement"
+                                            >
+                                                <v-expansion-panel-text>
+                                                    <div class="financial-table">
+                                                        <v-data-table
+                                                            :headers="getFinancialHeaders(financials.income_statement)"
+                                                            :items="financials.income_statement"
+                                                            density="compact"
+                                                        ></v-data-table>
+                                                    </div>
+                                                </v-expansion-panel-text>
+                                            </v-expansion-panel>
+
+                                            <v-expansion-panel
+                                                v-if="financials.cash_flow && financials.cash_flow.length > 0"
+                                                title="Cash Flow Statement"
+                                            >
+                                                <v-expansion-panel-text>
+                                                    <div class="financial-table">
+                                                        <v-data-table
+                                                            :headers="getFinancialHeaders(financials.cash_flow)"
+                                                            :items="financials.cash_flow"
+                                                            density="compact"
+                                                        ></v-data-table>
+                                                    </div>
+                                                </v-expansion-panel-text>
+                                            </v-expansion-panel>
+                                        </v-expansion-panels>
+
+                                        <v-alert
+                                            v-else
+                                            type="info"
+                                            text="No financial statements available for this company."
+                                        ></v-alert>
+                                    </div>
+                                </v-window-item>
+                            </v-window>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+        </div>
+    </template>
+
+    <template id="filing-template">
+        <div v-if="filing">
+            <v-row>
+                <v-col cols="12">
+                    <v-card>
+                        <v-card-title class="text-h4">
+                            {{ filing.form }} Filing
+                        </v-card-title>
+                        <v-card-subtitle>
+                            {{ filing.company_name }} - {{ formatDate(filing.filing_date) }}
+                        </v-card-subtitle>
+                        <v-card-text>
+                            <v-row>
+                                <v-col cols="12" md="6">
+                                    <p><strong>Accession Number:</strong> {{ filing.accession_no }}</p>
+                                    <p><strong>CIK:</strong> {{ filing.cik }}</p>
+                                    <p><strong>Size:</strong> {{ formatSize(filing.size) }}</p>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <p><strong>Has XBRL:</strong> {{ filing.has_xbrl ? 'Yes' : 'No' }}</p>
+                                    <p v-if="filing.description"><strong>Description:</strong> {{ filing.description }}</p>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <v-row v-if="filing.attachments && filing.attachments.length > 0" class="mt-4">
+                <v-col cols="12">
+                    <v-card>
+                        <v-card-title>
+                            Attachments
+                            <v-spacer></v-spacer>
+                            <v-btn 
+                                @click="refreshAttachments" 
+                                :loading="loadingAttachments"
+                                variant="outlined"
+                                size="small"
+                            >
+                                <v-icon>mdi-refresh</v-icon>
+                                Refresh
+                            </v-btn>
+                        </v-card-title>
+                        <v-card-text>
+                            <v-data-table
+                                :headers="attachmentHeaders"
+                                :items="attachments"
+                                :loading="loadingAttachments"
+                            >
+                                <template v-slot:item.size="{ item }">
+                                    {{ formatSize(item.size) }}
+                                </template>
+                                <template v-slot:item.actions="{ item }">
+                                    <v-btn-group variant="outlined" size="small">
+                                        <v-btn
+                                            v-if="item.is_viewable"
+                                            @click="viewAttachment(item)"
+                                            color="primary"
+                                        >
+                                            <v-icon>mdi-eye</v-icon>
+                                            View
+                                        </v-btn>
+                                        <v-btn
+                                            @click="downloadAttachment(item)"
+                                            color="success"
+                                        >
+                                            <v-icon>mdi-download</v-icon>
+                                            Download
+                                        </v-btn>
+                                    </v-btn-group>
+                                </template>
+                            </v-data-table>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+
+            <!-- Enhanced Attachment Viewer Dialog -->
+            <v-dialog v-model="viewerDialog" max-width="95%" max-height="95%">
+                <v-card>
+                    <v-card-title class="file-viewer-header">
+                        <div>
+                            <v-icon class="mr-2">{{ getFileIcon(viewingAttachment?.filename) }}</v-icon>
+                            {{ viewingAttachment?.filename }}
+                            <v-chip class="ml-2" size="small" color="primary">
+                                {{ getFileType(viewingAttachment?.filename) }}
+                            </v-chip>
+                        </div>
+                        <div>
+                            <v-btn-group variant="outlined" size="small">
+                                <v-btn @click="toggleViewMode" v-if="canToggleView">
+                                    <v-icon>{{ viewMode === 'enhanced' ? 'mdi-code-tags' : 'mdi-eye' }}</v-icon>
+                                    {{ viewMode === 'enhanced' ? 'Raw' : 'Enhanced' }}
+                                </v-btn>
+                                <v-btn @click="copyToClipboard" v-if="fileContent">
+                                    <v-icon>mdi-content-copy</v-icon>
+                                    Copy
+                                </v-btn>
+                                <v-btn @click="viewerDialog = false" icon>
+                                    <v-icon>mdi-close</v-icon>
+                                </v-btn>
+                            </v-btn-group>
+                        </div>
+                    </v-card-title>
+                    
+                    <v-card-text class="file-viewer-content pa-0">
+                        <div v-if="loadingViewer" class="text-center py-8">
+                            <v-progress-circular indeterminate></v-progress-circular>
+                            <p class="mt-4">Loading attachment...</p>
+                        </div>
+                        
+                        <!-- Enhanced viewers for different file types -->
+                        <div v-else-if="viewingAttachment && viewMode === 'enhanced'">
+                            <!-- JSON Viewer -->
+                            <div v-if="isJsonFile(viewingAttachment.filename)" class="pa-4">
+                                <json-viewer 
+                                    :data="parsedJsonContent" 
+                                    :expanded="2"
+                                    class="json-viewer"
+                                ></json-viewer>
+                            </div>
+                            
+                            <!-- XML Viewer with syntax highlighting -->
+                            <div v-else-if="isXmlFile(viewingAttachment.filename)" class="pa-4">
+                                <pre class="code-viewer"><code class="language-xml" v-html="highlightedContent"></code></pre>
+                            </div>
+                            
+                            <!-- CSV Table Viewer -->
+                            <div v-else-if="isCsvFile(viewingAttachment.filename)" class="pa-4">
+                                <v-data-table
+                                    :headers="csvHeaders"
+                                    :items="csvData"
+                                    :items-per-page="50"
+                                    class="csv-table"
+                                    density="compact"
+                                >
+                                </v-data-table>
+                            </div>
+                            
+                            <!-- Code/Text with syntax highlighting -->
+                            <div v-else-if="isTextFile(viewingAttachment.filename)" class="pa-4">
+                                <pre class="code-viewer"><code :class="getLanguageClass(viewingAttachment.filename)" v-html="highlightedContent"></code></pre>
+                            </div>
+                            
+                            <!-- HTML/PDF iframe fallback -->
+                            <iframe
+                                v-else
+                                :src="viewingAttachment.view_url"
+                                style="width: 100%; height: 70vh; border: none;"
+                            ></iframe>
+                        </div>
+                        
+                        <!-- Raw/iframe view -->
+                        <iframe
+                            v-else-if="viewingAttachment"
+                            :src="viewingAttachment.view_url"
+                            style="width: 100%; height: 70vh; border: none;"
+                        ></iframe>
+                    </v-card-text>
+                    
+                    <v-card-actions>
+                        <v-chip size="small" v-if="viewingAttachment">
+                            {{ formatSize(viewingAttachment.size) }}
+                        </v-chip>
+                        <v-spacer></v-spacer>
+                        <v-btn
+                            v-if="viewingAttachment"
+                            @click="downloadAttachment(viewingAttachment)"
+                            color="success"
+                            variant="outlined"
+                        >
+                            <v-icon>mdi-download</v-icon>
+                            Download
+                        </v-btn>
+                        <v-btn @click="viewerDialog = false" variant="outlined">
+                            Close
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+        </div>
+    </template>
+
+    <template id="recent-filings-template">
+        <div>
+            <v-row>
+                <v-col cols="12">
+                    <v-card>
+                        <v-card-title class="text-h4">
+                            <v-icon class="mr-2">mdi-clock-outline</v-icon>
+                            Recent Filings
+                        </v-card-title>
+                        <v-card-text>
+                            <v-row class="mb-4">
+                                <v-col cols="12" md="6">
+                                    <v-select
+                                        v-model="selectedForm"
+                                        :items="formTypes"
+                                        label="Filter by form type"
+                                        clearable
+                                        @update:model-value="loadFilings"
+                                    ></v-select>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-btn @click="loadFilings" :loading="loading">
+                                        Refresh
+                                    </v-btn>
+                                </v-col>
+                            </v-row>
+
+                            <v-data-table
+                                :headers="headers"
+                                :items="filings"
+                                :loading="loading"
+                                @click:row="viewFiling"
+                                hover
+                            >
+                                <template v-slot:item.filing_date="{ item }">
+                                    {{ formatDate(item.filing_date) }}
+                                </template>
+                                <template v-slot:item.size="{ item }">
+                                    {{ formatSize(item.size) }}
+                                </template>
+                            </v-data-table>
+                        </v-card-text>
+                    </v-card>
+                </v-col>
+            </v-row>
+        </div>
+    </template>
+
     <!-- Vue 3 and dependencies -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    
+    <!-- File viewing libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://unpkg.com/@alenaksu/json-viewer@2.0.1/dist/json-viewer.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <script>
         const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
@@ -149,142 +739,7 @@
 
         // Home component
         const Home = {
-            template: `
-                <div>
-                    <v-row>
-                        <v-col cols="12">
-                            <v-card class="mb-6">
-                                <v-card-title class="text-h4 text-center py-6">
-                                    <v-icon size="48" class="mr-4">mdi-chart-line</v-icon>
-                                    Welcome to EDGAR Explorer
-                                </v-card-title>
-                                <v-card-text class="text-center">
-                                    <p class="text-h6 mb-4">Explore SEC EDGAR filing data with ease</p>
-                                    <p class="text-body-1">Search for companies, view their filings, and analyze financial statements</p>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Search section -->
-                    <v-row>
-                        <v-col cols="12" md="8" offset-md="2">
-                            <v-card>
-                                <v-card-title>
-                                    <v-icon class="mr-2">mdi-magnify</v-icon>
-                                    Search Companies
-                                </v-card-title>
-                                <v-card-text>
-                                    <v-text-field
-                                        v-model="searchQuery"
-                                        label="Enter company ticker or name"
-                                        placeholder="e.g., AAPL, Apple Inc"
-                                        prepend-inner-icon="mdi-magnify"
-                                        @keyup.enter="searchCompanies"
-                                        :loading="searching"
-                                    ></v-text-field>
-                                    <v-btn
-                                        color="primary"
-                                        @click="searchCompanies"
-                                        :loading="searching"
-                                        block
-                                        class="mt-2"
-                                    >
-                                        Search
-                                    </v-btn>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Search results -->
-                    <v-row v-if="searchResults.length > 0" class="mt-4">
-                        <v-col cols="12">
-                            <v-card>
-                                <v-card-title>Search Results</v-card-title>
-                                <v-card-text>
-                                    <v-row>
-                                        <v-col
-                                            v-for="company in searchResults"
-                                            :key="company.ticker"
-                                            cols="12"
-                                            md="6"
-                                            lg="4"
-                                        >
-                                            <v-card
-                                                class="company-card"
-                                                @click="$router.push('/company/' + company.ticker)"
-                                            >
-                                                <v-card-title>{{ company.ticker }}</v-card-title>
-                                                <v-card-subtitle>{{ company.name }}</v-card-subtitle>
-                                                <v-card-text>
-                                                    <p><strong>CIK:</strong> {{ company.cik }}</p>
-                                                    <p v-if="company.industry"><strong>Industry:</strong> {{ company.industry }}</p>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Quick actions -->
-                    <v-row class="mt-6">
-                        <v-col cols="12" md="6">
-                            <v-card class="company-card" @click="$router.push('/recent-filings')">
-                                <v-card-title>
-                                    <v-icon class="mr-2">mdi-clock-outline</v-icon>
-                                    Recent Filings
-                                </v-card-title>
-                                <v-card-text>
-                                    View the latest SEC filings across all companies
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                        <v-col cols="12" md="6">
-                            <v-card class="company-card" @click="showPopularCompanies">
-                                <v-card-title>
-                                    <v-icon class="mr-2">mdi-star</v-icon>
-                                    Popular Companies
-                                </v-card-title>
-                                <v-card-text>
-                                    Quick access to major public companies
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Popular companies -->
-                    <v-row v-if="showPopular" class="mt-4">
-                        <v-col cols="12">
-                            <v-card>
-                                <v-card-title>Popular Companies</v-card-title>
-                                <v-card-text>
-                                    <v-row>
-                                        <v-col
-                                            v-for="ticker in popularTickers"
-                                            :key="ticker"
-                                            cols="6"
-                                            sm="4"
-                                            md="3"
-                                            lg="2"
-                                        >
-                                            <v-btn
-                                                variant="outlined"
-                                                @click="$router.push('/company/' + ticker)"
-                                                block
-                                            >
-                                                {{ ticker }}
-                                            </v-btn>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-                </div>
-            `,
+            template: '#home-template',
             setup() {
                 const searchQuery = ref('');
                 const searchResults = ref([]);
@@ -324,141 +779,7 @@
 
         // Company component
         const Company = {
-            template: `
-                <div v-if="company">
-                    <!-- Company header -->
-                    <v-row>
-                        <v-col cols="12">
-                            <v-card class="mb-4">
-                                <v-card-title class="text-h4">
-                                    {{ company.ticker }}
-                                    <v-chip class="ml-4" color="primary">{{ company.cik }}</v-chip>
-                                </v-card-title>
-                                <v-card-subtitle class="text-h6">{{ company.name }}</v-card-subtitle>
-                                <v-card-text v-if="company.industry">
-                                    <p><strong>Industry:</strong> {{ company.industry }}</p>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Tabs for different views -->
-                    <v-row>
-                        <v-col cols="12">
-                            <v-card>
-                                <v-tabs v-model="activeTab" bg-color="primary">
-                                    <v-tab value="filings">Filings</v-tab>
-                                    <v-tab value="financials">Financials</v-tab>
-                                </v-tabs>
-
-                                <v-card-text>
-                                    <v-window v-model="activeTab">
-                                        <!-- Filings tab -->
-                                        <v-window-item value="filings">
-                                            <div class="mb-4">
-                                                <v-row>
-                                                    <v-col cols="12" md="6">
-                                                        <v-select
-                                                            v-model="selectedForm"
-                                                            :items="formTypes"
-                                                            label="Filter by form type"
-                                                            clearable
-                                                            @update:model-value="loadFilings"
-                                                        ></v-select>
-                                                    </v-col>
-                                                    <v-col cols="12" md="6">
-                                                        <v-btn @click="loadFilings" :loading="loadingFilings">
-                                                            Refresh
-                                                        </v-btn>
-                                                    </v-col>
-                                                </v-row>
-                                            </div>
-
-                                            <v-data-table
-                                                :headers="filingHeaders"
-                                                :items="filings"
-                                                :loading="loadingFilings"
-                                                @click:row="viewFiling"
-                                                hover
-                                            >
-                                                <template v-slot:item.filing_date="{ item }">
-                                                    {{ formatDate(item.filing_date) }}
-                                                </template>
-                                                <template v-slot:item.size="{ item }">
-                                                    {{ formatSize(item.size) }}
-                                                </template>
-                                            </v-data-table>
-                                        </v-window-item>
-
-                                        <!-- Financials tab -->
-                                        <v-window-item value="financials">
-                                            <div v-if="loadingFinancials" class="text-center py-8">
-                                                <v-progress-circular indeterminate></v-progress-circular>
-                                                <p class="mt-4">Loading financial statements...</p>
-                                            </div>
-
-                                            <div v-else>
-                                                <v-expansion-panels v-if="financials">
-                                                    <v-expansion-panel
-                                                        v-if="financials.balance_sheet && financials.balance_sheet.length > 0"
-                                                        title="Balance Sheet"
-                                                    >
-                                                        <v-expansion-panel-text>
-                                                            <div class="financial-table">
-                                                                <v-data-table
-                                                                    :headers="getFinancialHeaders(financials.balance_sheet)"
-                                                                    :items="financials.balance_sheet"
-                                                                    density="compact"
-                                                                ></v-data-table>
-                                                            </div>
-                                                        </v-expansion-panel-text>
-                                                    </v-expansion-panel>
-
-                                                    <v-expansion-panel
-                                                        v-if="financials.income_statement && financials.income_statement.length > 0"
-                                                        title="Income Statement"
-                                                    >
-                                                        <v-expansion-panel-text>
-                                                            <div class="financial-table">
-                                                                <v-data-table
-                                                                    :headers="getFinancialHeaders(financials.income_statement)"
-                                                                    :items="financials.income_statement"
-                                                                    density="compact"
-                                                                ></v-data-table>
-                                                            </div>
-                                                        </v-expansion-panel-text>
-                                                    </v-expansion-panel>
-
-                                                    <v-expansion-panel
-                                                        v-if="financials.cash_flow && financials.cash_flow.length > 0"
-                                                        title="Cash Flow Statement"
-                                                    >
-                                                        <v-expansion-panel-text>
-                                                            <div class="financial-table">
-                                                                <v-data-table
-                                                                    :headers="getFinancialHeaders(financials.cash_flow)"
-                                                                    :items="financials.cash_flow"
-                                                                    density="compact"
-                                                                ></v-data-table>
-                                                            </div>
-                                                        </v-expansion-panel-text>
-                                                    </v-expansion-panel>
-                                                </v-expansion-panels>
-
-                                                <v-alert
-                                                    v-else
-                                                    type="info"
-                                                    text="No financial statements available for this company."
-                                                ></v-alert>
-                                            </div>
-                                        </v-window-item>
-                                    </v-window>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-                </div>
-            `,
+            template: '#company-template',
             setup() {
                 const route = VueRouter.useRoute();
                 const router = VueRouter.useRouter();
@@ -572,121 +893,7 @@
 
         // Filing component
         const Filing = {
-            template: `
-                <div v-if="filing">
-                    <v-row>
-                        <v-col cols="12">
-                            <v-card>
-                                <v-card-title class="text-h4">
-                                    {{ filing.form }} Filing
-                                </v-card-title>
-                                <v-card-subtitle>
-                                    {{ filing.company_name }} - {{ formatDate(filing.filing_date) }}
-                                </v-card-subtitle>
-                                <v-card-text>
-                                    <v-row>
-                                        <v-col cols="12" md="6">
-                                            <p><strong>Accession Number:</strong> {{ filing.accession_no }}</p>
-                                            <p><strong>CIK:</strong> {{ filing.cik }}</p>
-                                            <p><strong>Size:</strong> {{ formatSize(filing.size) }}</p>
-                                        </v-col>
-                                        <v-col cols="12" md="6">
-                                            <p><strong>Has XBRL:</strong> {{ filing.has_xbrl ? 'Yes' : 'No' }}</p>
-                                            <p v-if="filing.description"><strong>Description:</strong> {{ filing.description }}</p>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <v-row v-if="filing.attachments && filing.attachments.length > 0" class="mt-4">
-                        <v-col cols="12">
-                            <v-card>
-                                <v-card-title>
-                                    Attachments
-                                    <v-spacer></v-spacer>
-                                    <v-btn 
-                                        @click="refreshAttachments" 
-                                        :loading="loadingAttachments"
-                                        variant="outlined"
-                                        size="small"
-                                    >
-                                        <v-icon>mdi-refresh</v-icon>
-                                        Refresh
-                                    </v-btn>
-                                </v-card-title>
-                                <v-card-text>
-                                    <v-data-table
-                                        :headers="attachmentHeaders"
-                                        :items="attachments"
-                                        :loading="loadingAttachments"
-                                    >
-                                        <template v-slot:item.size="{ item }">
-                                            {{ formatSize(item.size) }}
-                                        </template>
-                                        <template v-slot:item.actions="{ item }">
-                                            <v-btn-group variant="outlined" size="small">
-                                                <v-btn
-                                                    v-if="item.is_viewable"
-                                                    @click="viewAttachment(item)"
-                                                    color="primary"
-                                                >
-                                                    <v-icon>mdi-eye</v-icon>
-                                                    View
-                                                </v-btn>
-                                                <v-btn
-                                                    @click="downloadAttachment(item)"
-                                                    color="success"
-                                                >
-                                                    <v-icon>mdi-download</v-icon>
-                                                    Download
-                                                </v-btn>
-                                            </v-btn-group>
-                                        </template>
-                                    </v-data-table>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-
-                    <!-- Attachment Viewer Dialog -->
-                    <v-dialog v-model="viewerDialog" max-width="90%" max-height="90%">
-                        <v-card>
-                            <v-card-title>
-                                {{ viewingAttachment?.filename }}
-                                <v-spacer></v-spacer>
-                                <v-btn icon @click="viewerDialog = false">
-                                    <v-icon>mdi-close</v-icon>
-                                </v-btn>
-                            </v-card-title>
-                            <v-card-text style="height: 70vh; overflow: auto;">
-                                <div v-if="loadingViewer" class="text-center py-8">
-                                    <v-progress-circular indeterminate></v-progress-circular>
-                                    <p class="mt-4">Loading attachment...</p>
-                                </div>
-                                <iframe
-                                    v-else-if="viewingAttachment"
-                                    :src="viewingAttachment.view_url"
-                                    style="width: 100%; height: 100%; border: none;"
-                                ></iframe>
-                            </v-card-text>
-                            <v-card-actions>
-                                <v-spacer></v-spacer>
-                                <v-btn
-                                    v-if="viewingAttachment"
-                                    @click="downloadAttachment(viewingAttachment)"
-                                    color="success"
-                                >
-                                    <v-icon>mdi-download</v-icon>
-                                    Download
-                                </v-btn>
-                                <v-btn @click="viewerDialog = false">Close</v-btn>
-                            </v-card-actions>
-                        </v-card>
-                    </v-dialog>
-                </div>
-            `,
+            template: '#filing-template',
             setup() {
                 const route = VueRouter.useRoute();
                 const filing = ref(null);
@@ -729,15 +936,43 @@
                     await loadAttachments();
                 };
 
-                const viewAttachment = (attachment) => {
+                // Enhanced file viewing
+                const viewMode = ref('enhanced');
+                const fileContent = ref('');
+                const parsedJsonContent = ref(null);
+                const highlightedContent = ref('');
+                const csvData = ref([]);
+                const csvHeaders = ref([]);
+
+                const viewAttachment = async (attachment) => {
                     viewingAttachment.value = attachment;
                     loadingViewer.value = true;
                     viewerDialog.value = true;
+                    viewMode.value = 'enhanced';
                     
-                    // Reset loading state after a short delay to show the iframe
-                    setTimeout(() => {
-                        loadingViewer.value = false;
-                    }, 500);
+                    // Load and process file content for enhanced viewing
+                    if (isTextBasedFile(attachment.filename)) {
+                        try {
+                            const response = await axios.get(attachment.view_url);
+                            fileContent.value = response.data;
+                            
+                            if (isJsonFile(attachment.filename)) {
+                                try {
+                                    parsedJsonContent.value = JSON.parse(fileContent.value);
+                                } catch (e) {
+                                    console.warn('Failed to parse JSON:', e);
+                                }
+                            } else if (isCsvFile(attachment.filename)) {
+                                parseCsvContent(fileContent.value);
+                            } else {
+                                highlightContent(fileContent.value, attachment.filename);
+                            }
+                        } catch (error) {
+                            console.error('Error loading file content:', error);
+                        }
+                    }
+                    
+                    loadingViewer.value = false;
                 };
 
                 const downloadAttachment = (attachment) => {
@@ -761,6 +996,124 @@
                     return `${(kb / 1024).toFixed(1)} MB`;
                 };
 
+                // File type detection helpers
+                const isJsonFile = (filename) => {
+                    return filename?.toLowerCase().endsWith('.json');
+                };
+
+                const isXmlFile = (filename) => {
+                    return filename?.toLowerCase().endsWith('.xml');
+                };
+
+                const isCsvFile = (filename) => {
+                    return filename?.toLowerCase().endsWith('.csv');
+                };
+
+                const isTextFile = (filename) => {
+                    const textExtensions = ['.txt', '.md', '.log', '.py', '.js', '.css', '.html', '.htm'];
+                    return textExtensions.some(ext => filename?.toLowerCase().endsWith(ext));
+                };
+
+                const isTextBasedFile = (filename) => {
+                    return isJsonFile(filename) || isXmlFile(filename) || isCsvFile(filename) || isTextFile(filename);
+                };
+
+                const getFileType = (filename) => {
+                    if (!filename) return 'Unknown';
+                    const ext = filename.split('.').pop()?.toLowerCase();
+                    const typeMap = {
+                        'json': 'JSON',
+                        'xml': 'XML',
+                        'csv': 'CSV',
+                        'txt': 'Text',
+                        'html': 'HTML',
+                        'htm': 'HTML',
+                        'pdf': 'PDF',
+                        'jpg': 'Image',
+                        'jpeg': 'Image',
+                        'png': 'Image',
+                        'gif': 'Image'
+                    };
+                    return typeMap[ext] || ext?.toUpperCase() || 'Unknown';
+                };
+
+                const getFileIcon = (filename) => {
+                    if (!filename) return 'mdi-file';
+                    const ext = filename.split('.').pop()?.toLowerCase();
+                    const iconMap = {
+                        'json': 'mdi-code-json',
+                        'xml': 'mdi-xml',
+                        'csv': 'mdi-table',
+                        'txt': 'mdi-text',
+                        'html': 'mdi-language-html5',
+                        'htm': 'mdi-language-html5',
+                        'pdf': 'mdi-file-pdf-box',
+                        'jpg': 'mdi-image',
+                        'jpeg': 'mdi-image',
+                        'png': 'mdi-image',
+                        'gif': 'mdi-image'
+                    };
+                    return iconMap[ext] || 'mdi-file';
+                };
+
+                const getLanguageClass = (filename) => {
+                    if (!filename) return 'language-text';
+                    const ext = filename.split('.').pop()?.toLowerCase();
+                    const langMap = {
+                        'json': 'language-json',
+                        'xml': 'language-xml',
+                        'html': 'language-html',
+                        'htm': 'language-html',
+                        'css': 'language-css',
+                        'js': 'language-javascript',
+                        'py': 'language-python',
+                        'txt': 'language-text'
+                    };
+                    return langMap[ext] || 'language-text';
+                };
+
+                const highlightContent = (content, filename) => {
+                    const language = getLanguageClass(filename).replace('language-', '');
+                    if (window.Prism && window.Prism.languages[language]) {
+                        highlightedContent.value = window.Prism.highlight(content, window.Prism.languages[language], language);
+                    } else {
+                        highlightedContent.value = content;
+                    }
+                };
+
+                const parseCsvContent = (content) => {
+                    if (window.Papa) {
+                        const result = window.Papa.parse(content, { header: true, skipEmptyLines: true });
+                        csvData.value = result.data;
+                        if (result.data.length > 0) {
+                            csvHeaders.value = Object.keys(result.data[0]).map(key => ({
+                                title: key,
+                                key: key,
+                                sortable: true
+                            }));
+                        }
+                    }
+                };
+
+                const canToggleView = computed(() => {
+                    return viewingAttachment.value && isTextBasedFile(viewingAttachment.value.filename);
+                });
+
+                const toggleViewMode = () => {
+                    viewMode.value = viewMode.value === 'enhanced' ? 'raw' : 'enhanced';
+                };
+
+                const copyToClipboard = async () => {
+                    if (fileContent.value) {
+                        try {
+                            await navigator.clipboard.writeText(fileContent.value);
+                            // You could add a snackbar notification here
+                        } catch (err) {
+                            console.error('Failed to copy to clipboard:', err);
+                        }
+                    }
+                };
+
                 onMounted(() => {
                     loadFiling();
                 });
@@ -777,60 +1130,31 @@
                     viewAttachment,
                     downloadAttachment,
                     formatDate,
-                    formatSize
+                    formatSize,
+                    // Enhanced viewer
+                    viewMode,
+                    fileContent,
+                    parsedJsonContent,
+                    highlightedContent,
+                    csvData,
+                    csvHeaders,
+                    isJsonFile,
+                    isXmlFile,
+                    isCsvFile,
+                    isTextFile,
+                    getFileType,
+                    getFileIcon,
+                    getLanguageClass,
+                    canToggleView,
+                    toggleViewMode,
+                    copyToClipboard
                 };
             }
         };
 
         // Recent Filings component
         const RecentFilings = {
-            template: `
-                <div>
-                    <v-row>
-                        <v-col cols="12">
-                            <v-card>
-                                <v-card-title class="text-h4">
-                                    <v-icon class="mr-2">mdi-clock-outline</v-icon>
-                                    Recent Filings
-                                </v-card-title>
-                                <v-card-text>
-                                    <v-row class="mb-4">
-                                        <v-col cols="12" md="6">
-                                            <v-select
-                                                v-model="selectedForm"
-                                                :items="formTypes"
-                                                label="Filter by form type"
-                                                clearable
-                                                @update:model-value="loadFilings"
-                                            ></v-select>
-                                        </v-col>
-                                        <v-col cols="12" md="6">
-                                            <v-btn @click="loadFilings" :loading="loading">
-                                                Refresh
-                                            </v-btn>
-                                        </v-col>
-                                    </v-row>
-
-                                    <v-data-table
-                                        :headers="headers"
-                                        :items="filings"
-                                        :loading="loading"
-                                        @click:row="viewFiling"
-                                        hover
-                                    >
-                                        <template v-slot:item.filing_date="{ item }">
-                                            {{ formatDate(item.filing_date) }}
-                                        </template>
-                                        <template v-slot:item.size="{ item }">
-                                            {{ formatSize(item.size) }}
-                                        </template>
-                                    </v-data-table>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-                </div>
-            `,
+            template: '#recent-filings-template',
             setup() {
                 const router = VueRouter.useRouter();
                 const filings = ref([]);
