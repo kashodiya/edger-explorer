@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDGAR Explorer</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.css" rel="stylesheet">
+    <style>
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .financial-table {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .company-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .company-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .attachment-viewer {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        .attachment-actions {
+            gap: 8px;
+        }
+        .v-btn-group .v-btn {
+            margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <v-app>
+            <!-- Loading overlay -->
+            <div v-if="loading" class="loading-overlay">
+                <v-progress-circular
+                    indeterminate
+                    size="64"
+                    color="primary"
+                ></v-progress-circular>
+            </div>
+
+            <!-- App bar -->
+            <v-app-bar color="primary" dark>
+                <v-app-bar-title>
+                    <v-icon class="mr-2">mdi-chart-line</v-icon>
+                    EDGAR Explorer
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn icon @click="$router.push('/')">
+                    <v-icon>mdi-home</v-icon>
+                </v-btn>
+            </v-app-bar>
+
+            <!-- Main content -->
+            <v-main>
+                <v-container fluid>
+                    <router-view></router-view>
+                </v-container>
+            </v-main>
+
+            <!-- Snackbar for notifications -->
+            <v-snackbar
+                v-model="snackbar.show"
+                :color="snackbar.color"
+                :timeout="snackbar.timeout"
+            >
+                {{ snackbar.text }}
+                <template v-slot:actions>
+                    <v-btn
+                        color="white"
+                        variant="text"
+                        @click="snackbar.show = false"
+                    >
+                        Close
+                    </v-btn>
+                </template>
+            </v-snackbar>
+        </v-app>
+    </div>
+
+    <!-- Vue 3 and dependencies -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue-router@4/dist/vue-router.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.0/dist/vuetify.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+        const { createRouter, createWebHashHistory } = VueRouter;
+        const { createVuetify } = Vuetify;
+
+        // API service
+        const api = {
+            async searchCompanies(query) {
+                const response = await axios.get(`/api/search/companies?q=${encodeURIComponent(query)}`);
+                return response.data;
+            },
+            async getCompany(ticker) {
+                const response = await axios.get(`/api/company/${ticker}`);
+                return response.data;
+            },
+            async getCompanyFilings(ticker, form = null, limit = 20) {
+                let url = `/api/company/${ticker}/filings?limit=${limit}`;
+                if (form) url += `&form=${form}`;
+                const response = await axios.get(url);
+                return response.data;
+            },
+            async getCompanyFinancials(ticker) {
+                const response = await axios.get(`/api/company/${ticker}/financials`);
+                return response.data;
+            },
+            async getFilingDetails(accessionNo) {
+                const response = await axios.get(`/api/filing/${accessionNo}`);
+                return response.data;
+            },
+            async getFilingAttachments(accessionNo) {
+                const response = await axios.get(`/api/filing/${accessionNo}/attachments`);
+                return response.data;
+            },
+            async getRecentFilings(form = null, limit = 50) {
+                let url = `/api/recent-filings?limit=${limit}`;
+                if (form) url += `&form=${form}`;
+                const response = await axios.get(url);
+                return response.data;
+            },
+            async getFormTypes() {
+                const response = await axios.get('/api/form-types');
+                return response.data;
+            }
+        };
+
+        // Home component
+        const Home = {
+            template: `
+                <div>
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card class="mb-6">
+                                <v-card-title class="text-h4 text-center py-6">
+                                    <v-icon size="48" class="mr-4">mdi-chart-line</v-icon>
+                                    Welcome to EDGAR Explorer
+                                </v-card-title>
+                                <v-card-text class="text-center">
+                                    <p class="text-h6 mb-4">Explore SEC EDGAR filing data with ease</p>
+                                    <p class="text-body-1">Search for companies, view their filings, and analyze financial statements</p>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Search section -->
+                    <v-row>
+                        <v-col cols="12" md="8" offset-md="2">
+                            <v-card>
+                                <v-card-title>
+                                    <v-icon class="mr-2">mdi-magnify</v-icon>
+                                    Search Companies
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-text-field
+                                        v-model="searchQuery"
+                                        label="Enter company ticker or name"
+                                        placeholder="e.g., AAPL, Apple Inc"
+                                        prepend-inner-icon="mdi-magnify"
+                                        @keyup.enter="searchCompanies"
+                                        :loading="searching"
+                                    ></v-text-field>
+                                    <v-btn
+                                        color="primary"
+                                        @click="searchCompanies"
+                                        :loading="searching"
+                                        block
+                                        class="mt-2"
+                                    >
+                                        Search
+                                    </v-btn>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Search results -->
+                    <v-row v-if="searchResults.length > 0" class="mt-4">
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title>Search Results</v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col
+                                            v-for="company in searchResults"
+                                            :key="company.ticker"
+                                            cols="12"
+                                            md="6"
+                                            lg="4"
+                                        >
+                                            <v-card
+                                                class="company-card"
+                                                @click="$router.push('/company/' + company.ticker)"
+                                            >
+                                                <v-card-title>{{ company.ticker }}</v-card-title>
+                                                <v-card-subtitle>{{ company.name }}</v-card-subtitle>
+                                                <v-card-text>
+                                                    <p><strong>CIK:</strong> {{ company.cik }}</p>
+                                                    <p v-if="company.industry"><strong>Industry:</strong> {{ company.industry }}</p>
+                                                </v-card-text>
+                                            </v-card>
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Quick actions -->
+                    <v-row class="mt-6">
+                        <v-col cols="12" md="6">
+                            <v-card class="company-card" @click="$router.push('/recent-filings')">
+                                <v-card-title>
+                                    <v-icon class="mr-2">mdi-clock-outline</v-icon>
+                                    Recent Filings
+                                </v-card-title>
+                                <v-card-text>
+                                    View the latest SEC filings across all companies
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-card class="company-card" @click="showPopularCompanies">
+                                <v-card-title>
+                                    <v-icon class="mr-2">mdi-star</v-icon>
+                                    Popular Companies
+                                </v-card-title>
+                                <v-card-text>
+                                    Quick access to major public companies
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Popular companies -->
+                    <v-row v-if="showPopular" class="mt-4">
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title>Popular Companies</v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col
+                                            v-for="ticker in popularTickers"
+                                            :key="ticker"
+                                            cols="6"
+                                            sm="4"
+                                            md="3"
+                                            lg="2"
+                                        >
+                                            <v-btn
+                                                variant="outlined"
+                                                @click="$router.push('/company/' + ticker)"
+                                                block
+                                            >
+                                                {{ ticker }}
+                                            </v-btn>
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </div>
+            `,
+            setup() {
+                const searchQuery = ref('');
+                const searchResults = ref([]);
+                const searching = ref(false);
+                const showPopular = ref(false);
+                const popularTickers = ref(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'JNJ', 'V', 'PG', 'UNH']);
+
+                const searchCompanies = async () => {
+                    if (!searchQuery.value.trim()) return;
+                    
+                    searching.value = true;
+                    try {
+                        searchResults.value = await api.searchCompanies(searchQuery.value);
+                    } catch (error) {
+                        console.error('Search error:', error);
+                        // Handle error
+                    } finally {
+                        searching.value = false;
+                    }
+                };
+
+                const showPopularCompanies = () => {
+                    showPopular.value = !showPopular.value;
+                };
+
+                return {
+                    searchQuery,
+                    searchResults,
+                    searching,
+                    showPopular,
+                    popularTickers,
+                    searchCompanies,
+                    showPopularCompanies
+                };
+            }
+        };
+
+        // Company component
+        const Company = {
+            template: `
+                <div v-if="company">
+                    <!-- Company header -->
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card class="mb-4">
+                                <v-card-title class="text-h4">
+                                    {{ company.ticker }}
+                                    <v-chip class="ml-4" color="primary">{{ company.cik }}</v-chip>
+                                </v-card-title>
+                                <v-card-subtitle class="text-h6">{{ company.name }}</v-card-subtitle>
+                                <v-card-text v-if="company.industry">
+                                    <p><strong>Industry:</strong> {{ company.industry }}</p>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Tabs for different views -->
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card>
+                                <v-tabs v-model="activeTab" bg-color="primary">
+                                    <v-tab value="filings">Filings</v-tab>
+                                    <v-tab value="financials">Financials</v-tab>
+                                </v-tabs>
+
+                                <v-card-text>
+                                    <v-window v-model="activeTab">
+                                        <!-- Filings tab -->
+                                        <v-window-item value="filings">
+                                            <div class="mb-4">
+                                                <v-row>
+                                                    <v-col cols="12" md="6">
+                                                        <v-select
+                                                            v-model="selectedForm"
+                                                            :items="formTypes"
+                                                            label="Filter by form type"
+                                                            clearable
+                                                            @update:model-value="loadFilings"
+                                                        ></v-select>
+                                                    </v-col>
+                                                    <v-col cols="12" md="6">
+                                                        <v-btn @click="loadFilings" :loading="loadingFilings">
+                                                            Refresh
+                                                        </v-btn>
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+
+                                            <v-data-table
+                                                :headers="filingHeaders"
+                                                :items="filings"
+                                                :loading="loadingFilings"
+                                                @click:row="viewFiling"
+                                                hover
+                                            >
+                                                <template v-slot:item.filing_date="{ item }">
+                                                    {{ formatDate(item.filing_date) }}
+                                                </template>
+                                                <template v-slot:item.size="{ item }">
+                                                    {{ formatSize(item.size) }}
+                                                </template>
+                                            </v-data-table>
+                                        </v-window-item>
+
+                                        <!-- Financials tab -->
+                                        <v-window-item value="financials">
+                                            <div v-if="loadingFinancials" class="text-center py-8">
+                                                <v-progress-circular indeterminate></v-progress-circular>
+                                                <p class="mt-4">Loading financial statements...</p>
+                                            </div>
+
+                                            <div v-else>
+                                                <v-expansion-panels v-if="financials">
+                                                    <v-expansion-panel
+                                                        v-if="financials.balance_sheet && financials.balance_sheet.length > 0"
+                                                        title="Balance Sheet"
+                                                    >
+                                                        <v-expansion-panel-text>
+                                                            <div class="financial-table">
+                                                                <v-data-table
+                                                                    :headers="getFinancialHeaders(financials.balance_sheet)"
+                                                                    :items="financials.balance_sheet"
+                                                                    density="compact"
+                                                                ></v-data-table>
+                                                            </div>
+                                                        </v-expansion-panel-text>
+                                                    </v-expansion-panel>
+
+                                                    <v-expansion-panel
+                                                        v-if="financials.income_statement && financials.income_statement.length > 0"
+                                                        title="Income Statement"
+                                                    >
+                                                        <v-expansion-panel-text>
+                                                            <div class="financial-table">
+                                                                <v-data-table
+                                                                    :headers="getFinancialHeaders(financials.income_statement)"
+                                                                    :items="financials.income_statement"
+                                                                    density="compact"
+                                                                ></v-data-table>
+                                                            </div>
+                                                        </v-expansion-panel-text>
+                                                    </v-expansion-panel>
+
+                                                    <v-expansion-panel
+                                                        v-if="financials.cash_flow && financials.cash_flow.length > 0"
+                                                        title="Cash Flow Statement"
+                                                    >
+                                                        <v-expansion-panel-text>
+                                                            <div class="financial-table">
+                                                                <v-data-table
+                                                                    :headers="getFinancialHeaders(financials.cash_flow)"
+                                                                    :items="financials.cash_flow"
+                                                                    density="compact"
+                                                                ></v-data-table>
+                                                            </div>
+                                                        </v-expansion-panel-text>
+                                                    </v-expansion-panel>
+                                                </v-expansion-panels>
+
+                                                <v-alert
+                                                    v-else
+                                                    type="info"
+                                                    text="No financial statements available for this company."
+                                                ></v-alert>
+                                            </div>
+                                        </v-window-item>
+                                    </v-window>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </div>
+            `,
+            setup() {
+                const route = VueRouter.useRoute();
+                const router = VueRouter.useRouter();
+                
+                const company = ref(null);
+                const filings = ref([]);
+                const financials = ref(null);
+                const formTypes = ref([]);
+                const selectedForm = ref(null);
+                const activeTab = ref('filings');
+                const loadingFilings = ref(false);
+                const loadingFinancials = ref(false);
+
+                const filingHeaders = [
+                    { title: 'Form', key: 'form' },
+                    { title: 'Filing Date', key: 'filing_date' },
+                    { title: 'Description', key: 'description' },
+                    { title: 'Size', key: 'size' }
+                ];
+
+                const loadCompany = async () => {
+                    try {
+                        company.value = await api.getCompany(route.params.ticker);
+                    } catch (error) {
+                        console.error('Error loading company:', error);
+                    }
+                };
+
+                const loadFilings = async () => {
+                    loadingFilings.value = true;
+                    try {
+                        filings.value = await api.getCompanyFilings(route.params.ticker, selectedForm.value);
+                    } catch (error) {
+                        console.error('Error loading filings:', error);
+                    } finally {
+                        loadingFilings.value = false;
+                    }
+                };
+
+                const loadFinancials = async () => {
+                    loadingFinancials.value = true;
+                    try {
+                        financials.value = await api.getCompanyFinancials(route.params.ticker);
+                    } catch (error) {
+                        console.error('Error loading financials:', error);
+                    } finally {
+                        loadingFinancials.value = false;
+                    }
+                };
+
+                const loadFormTypes = async () => {
+                    try {
+                        formTypes.value = await api.getFormTypes();
+                    } catch (error) {
+                        console.error('Error loading form types:', error);
+                    }
+                };
+
+                const viewFiling = (event, { item }) => {
+                    router.push(`/filing/${item.accession_no}`);
+                };
+
+                const formatDate = (dateStr) => {
+                    return new Date(dateStr).toLocaleDateString();
+                };
+
+                const formatSize = (size) => {
+                    if (!size) return 'N/A';
+                    const kb = size / 1024;
+                    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                    return `${(kb / 1024).toFixed(1)} MB`;
+                };
+
+                const getFinancialHeaders = (data) => {
+                    if (!data || data.length === 0) return [];
+                    const keys = Object.keys(data[0]);
+                    return keys.map(key => ({ title: key, key }));
+                };
+
+                // Watch for tab changes
+                watch(activeTab, (newTab) => {
+                    if (newTab === 'financials' && !financials.value) {
+                        loadFinancials();
+                    }
+                });
+
+                onMounted(() => {
+                    loadCompany();
+                    loadFilings();
+                    loadFormTypes();
+                });
+
+                return {
+                    company,
+                    filings,
+                    financials,
+                    formTypes,
+                    selectedForm,
+                    activeTab,
+                    loadingFilings,
+                    loadingFinancials,
+                    filingHeaders,
+                    loadFilings,
+                    viewFiling,
+                    formatDate,
+                    formatSize,
+                    getFinancialHeaders
+                };
+            }
+        };
+
+        // Filing component
+        const Filing = {
+            template: `
+                <div v-if="filing">
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title class="text-h4">
+                                    {{ filing.form }} Filing
+                                </v-card-title>
+                                <v-card-subtitle>
+                                    {{ filing.company_name }} - {{ formatDate(filing.filing_date) }}
+                                </v-card-subtitle>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="12" md="6">
+                                            <p><strong>Accession Number:</strong> {{ filing.accession_no }}</p>
+                                            <p><strong>CIK:</strong> {{ filing.cik }}</p>
+                                            <p><strong>Size:</strong> {{ formatSize(filing.size) }}</p>
+                                        </v-col>
+                                        <v-col cols="12" md="6">
+                                            <p><strong>Has XBRL:</strong> {{ filing.has_xbrl ? 'Yes' : 'No' }}</p>
+                                            <p v-if="filing.description"><strong>Description:</strong> {{ filing.description }}</p>
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <v-row v-if="filing.attachments && filing.attachments.length > 0" class="mt-4">
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title>
+                                    Attachments
+                                    <v-spacer></v-spacer>
+                                    <v-btn 
+                                        @click="refreshAttachments" 
+                                        :loading="loadingAttachments"
+                                        variant="outlined"
+                                        size="small"
+                                    >
+                                        <v-icon>mdi-refresh</v-icon>
+                                        Refresh
+                                    </v-btn>
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-data-table
+                                        :headers="attachmentHeaders"
+                                        :items="attachments"
+                                        :loading="loadingAttachments"
+                                    >
+                                        <template v-slot:item.size="{ item }">
+                                            {{ formatSize(item.size) }}
+                                        </template>
+                                        <template v-slot:item.actions="{ item }">
+                                            <v-btn-group variant="outlined" size="small">
+                                                <v-btn
+                                                    v-if="item.is_viewable"
+                                                    @click="viewAttachment(item)"
+                                                    color="primary"
+                                                >
+                                                    <v-icon>mdi-eye</v-icon>
+                                                    View
+                                                </v-btn>
+                                                <v-btn
+                                                    @click="downloadAttachment(item)"
+                                                    color="success"
+                                                >
+                                                    <v-icon>mdi-download</v-icon>
+                                                    Download
+                                                </v-btn>
+                                            </v-btn-group>
+                                        </template>
+                                    </v-data-table>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Attachment Viewer Dialog -->
+                    <v-dialog v-model="viewerDialog" max-width="90%" max-height="90%">
+                        <v-card>
+                            <v-card-title>
+                                {{ viewingAttachment?.filename }}
+                                <v-spacer></v-spacer>
+                                <v-btn icon @click="viewerDialog = false">
+                                    <v-icon>mdi-close</v-icon>
+                                </v-btn>
+                            </v-card-title>
+                            <v-card-text style="height: 70vh; overflow: auto;">
+                                <div v-if="loadingViewer" class="text-center py-8">
+                                    <v-progress-circular indeterminate></v-progress-circular>
+                                    <p class="mt-4">Loading attachment...</p>
+                                </div>
+                                <iframe
+                                    v-else-if="viewingAttachment"
+                                    :src="viewingAttachment.view_url"
+                                    style="width: 100%; height: 100%; border: none;"
+                                ></iframe>
+                            </v-card-text>
+                            <v-card-actions>
+                                <v-spacer></v-spacer>
+                                <v-btn
+                                    v-if="viewingAttachment"
+                                    @click="downloadAttachment(viewingAttachment)"
+                                    color="success"
+                                >
+                                    <v-icon>mdi-download</v-icon>
+                                    Download
+                                </v-btn>
+                                <v-btn @click="viewerDialog = false">Close</v-btn>
+                            </v-card-actions>
+                        </v-card>
+                    </v-dialog>
+                </div>
+            `,
+            setup() {
+                const route = VueRouter.useRoute();
+                const filing = ref(null);
+                const attachments = ref([]);
+                const loadingAttachments = ref(false);
+                const viewerDialog = ref(false);
+                const viewingAttachment = ref(null);
+                const loadingViewer = ref(false);
+
+                const attachmentHeaders = [
+                    { title: 'Filename', key: 'filename' },
+                    { title: 'Type', key: 'type' },
+                    { title: 'Description', key: 'description' },
+                    { title: 'Size', key: 'size' },
+                    { title: 'Actions', key: 'actions', sortable: false }
+                ];
+
+                const loadFiling = async () => {
+                    try {
+                        filing.value = await api.getFilingDetails(route.params.accessionNo);
+                        await loadAttachments();
+                    } catch (error) {
+                        console.error('Error loading filing:', error);
+                    }
+                };
+
+                const loadAttachments = async () => {
+                    loadingAttachments.value = true;
+                    try {
+                        const response = await axios.get(`/api/filing/${route.params.accessionNo}/attachments`);
+                        attachments.value = response.data;
+                    } catch (error) {
+                        console.error('Error loading attachments:', error);
+                    } finally {
+                        loadingAttachments.value = false;
+                    }
+                };
+
+                const refreshAttachments = async () => {
+                    await loadAttachments();
+                };
+
+                const viewAttachment = (attachment) => {
+                    viewingAttachment.value = attachment;
+                    loadingViewer.value = true;
+                    viewerDialog.value = true;
+                    
+                    // Reset loading state after a short delay to show the iframe
+                    setTimeout(() => {
+                        loadingViewer.value = false;
+                    }, 500);
+                };
+
+                const downloadAttachment = (attachment) => {
+                    // Create a temporary link to trigger download
+                    const link = document.createElement('a');
+                    link.href = attachment.download_url;
+                    link.download = attachment.filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+
+                const formatDate = (dateStr) => {
+                    return new Date(dateStr).toLocaleDateString();
+                };
+
+                const formatSize = (size) => {
+                    if (!size) return 'N/A';
+                    const kb = size / 1024;
+                    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                    return `${(kb / 1024).toFixed(1)} MB`;
+                };
+
+                onMounted(() => {
+                    loadFiling();
+                });
+
+                return {
+                    filing,
+                    attachments,
+                    loadingAttachments,
+                    viewerDialog,
+                    viewingAttachment,
+                    loadingViewer,
+                    attachmentHeaders,
+                    refreshAttachments,
+                    viewAttachment,
+                    downloadAttachment,
+                    formatDate,
+                    formatSize
+                };
+            }
+        };
+
+        // Recent Filings component
+        const RecentFilings = {
+            template: `
+                <div>
+                    <v-row>
+                        <v-col cols="12">
+                            <v-card>
+                                <v-card-title class="text-h4">
+                                    <v-icon class="mr-2">mdi-clock-outline</v-icon>
+                                    Recent Filings
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-row class="mb-4">
+                                        <v-col cols="12" md="6">
+                                            <v-select
+                                                v-model="selectedForm"
+                                                :items="formTypes"
+                                                label="Filter by form type"
+                                                clearable
+                                                @update:model-value="loadFilings"
+                                            ></v-select>
+                                        </v-col>
+                                        <v-col cols="12" md="6">
+                                            <v-btn @click="loadFilings" :loading="loading">
+                                                Refresh
+                                            </v-btn>
+                                        </v-col>
+                                    </v-row>
+
+                                    <v-data-table
+                                        :headers="headers"
+                                        :items="filings"
+                                        :loading="loading"
+                                        @click:row="viewFiling"
+                                        hover
+                                    >
+                                        <template v-slot:item.filing_date="{ item }">
+                                            {{ formatDate(item.filing_date) }}
+                                        </template>
+                                        <template v-slot:item.size="{ item }">
+                                            {{ formatSize(item.size) }}
+                                        </template>
+                                    </v-data-table>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </div>
+            `,
+            setup() {
+                const router = VueRouter.useRouter();
+                const filings = ref([]);
+                const formTypes = ref([]);
+                const selectedForm = ref(null);
+                const loading = ref(false);
+
+                const headers = [
+                    { title: 'Company', key: 'company_name' },
+                    { title: 'Form', key: 'form' },
+                    { title: 'Filing Date', key: 'filing_date' },
+                    { title: 'Description', key: 'description' },
+                    { title: 'Size', key: 'size' }
+                ];
+
+                const loadFilings = async () => {
+                    loading.value = true;
+                    try {
+                        filings.value = await api.getRecentFilings(selectedForm.value);
+                    } catch (error) {
+                        console.error('Error loading filings:', error);
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const loadFormTypes = async () => {
+                    try {
+                        formTypes.value = await api.getFormTypes();
+                    } catch (error) {
+                        console.error('Error loading form types:', error);
+                    }
+                };
+
+                const viewFiling = (event, { item }) => {
+                    router.push(`/filing/${item.accession_no}`);
+                };
+
+                const formatDate = (dateStr) => {
+                    return new Date(dateStr).toLocaleDateString();
+                };
+
+                const formatSize = (size) => {
+                    if (!size) return 'N/A';
+                    const kb = size / 1024;
+                    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+                    return `${(kb / 1024).toFixed(1)} MB`;
+                };
+
+                onMounted(() => {
+                    loadFilings();
+                    loadFormTypes();
+                });
+
+                return {
+                    filings,
+                    formTypes,
+                    selectedForm,
+                    loading,
+                    headers,
+                    loadFilings,
+                    viewFiling,
+                    formatDate,
+                    formatSize
+                };
+            }
+        };
+
+        // Router setup
+        const routes = [
+            { path: '/', component: Home },
+            { path: '/company/:ticker', component: Company },
+            { path: '/filing/:accessionNo', component: Filing },
+            { path: '/recent-filings', component: RecentFilings }
+        ];
+
+        const router = createRouter({
+            history: createWebHashHistory(),
+            routes
+        });
+
+        // Vuetify setup
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'light'
+            }
+        });
+
+        // Main app
+        const app = createApp({
+            setup() {
+                const loading = ref(false);
+                const snackbar = reactive({
+                    show: false,
+                    text: '',
+                    color: 'success',
+                    timeout: 3000
+                });
+
+                // Global error handler
+                window.addEventListener('unhandledrejection', (event) => {
+                    console.error('Unhandled promise rejection:', event.reason);
+                    snackbar.text = 'An error occurred. Please try again.';
+                    snackbar.color = 'error';
+                    snackbar.show = true;
+                });
+
+                return {
+                    loading,
+                    snackbar
+                };
+            }
+        });
+
+        app.use(router);
+        app.use(vuetify);
+        app.mount('#app');
+    </script>
+</body>
+</html>
